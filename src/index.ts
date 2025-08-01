@@ -71,33 +71,36 @@ app.use("*", async (req: Request, res: Response) => {
       const html = Buffer.concat(chunks).toString("utf8");
       const $ = cheerio.load(html);
 
-      $("link, script, img, a, meta").each((_, el) => {
-        const $el = $(el);
-        ["href", "src", "content"].forEach(attr => {
-          const v = $el.attr(attr);
-          if (!v) return;
+    $("link, script, img, a, meta").each((_, el) => {
+  const $el = $(el);
+  ["href", "src", "content"].forEach(attr => {
+    let v = $el.attr(attr);
+    if (!v) return;
+    if (v.startsWith("/proxy/")) {
+      try {
+        v = decodeURIComponent(v.slice("/proxy/".length));
+      } catch {}
+    }
 
-          let newUrl: string | null = null;
+    let newUrl: string | null = null;
+    try {
+      const parsed = new URL(v, ORIGIN);
+      if (EQUIVALENT_HOSTS.includes(parsed.host)) {
+        newUrl = parsed.pathname + parsed.search;
+      } else if (v.startsWith("/")) {
+        newUrl = v;
+      } else if (parsed.protocol.startsWith("http")) {
+        newUrl = `/${encodeURIComponent(v)}`;
+      }
+    } catch {
+    }
 
-          try {
-            const parsed = new URL(v, ORIGIN);
-            if (EQUIVALENT_HOSTS.includes(parsed.host)) {
-              // 同等ホストならパス＋クエリだけ
-              newUrl = parsed.pathname + parsed.search;
-            } else if (v.startsWith("/")) {
-              newUrl = v;
-            } else if (parsed.protocol.startsWith("http")) {
-              newUrl = `/${encodeURIComponent(v)}`;
-            }
-          } catch {
-            // skip malformed
-          }
+    if (newUrl) {
+      $el.attr(attr, newUrl);
+    }
+  });
+});
 
-          if (newUrl) {
-            $el.attr(attr, newUrl);
-          }
-        });
-      });
 
       Object.entries(upstream.headers).forEach(([k, v]) => {
         if (!hopByHop.includes(k.toLowerCase()) && typeof v === "string") {
