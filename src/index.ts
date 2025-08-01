@@ -4,6 +4,10 @@ import morgan from "morgan";
 import * as cheerio from "cheerio";
 
 const ORIGIN = "https://gomuraw3.global.ssl.fastly.net";
+const EQUIVALENT_HOSTS = [
+  new URL(ORIGIN).host,
+  "gomuraw.com"
+];
 const PORT = process.env.PORT || 3000;
 const hopByHop = [
   "connection","keep-alive","proxy-authenticate","proxy-authorization",
@@ -13,6 +17,30 @@ const hopByHop = [
 const app = express();
 app.use(morgan("dev"));
 
+// 外部URLエンコードパス用ルート
+app.get('/:encoded(https%3A.*|http%3A.*)', async (req: Request, res: Response) => {
+  const target = decodeURIComponent(req.params.encoded);
+  try {
+    const upstream = await axios.get(target, {
+      responseType: "stream",
+      timeout: 10000,
+      validateStatus: () => true
+    });
+    Object.entries(upstream.headers).forEach(([k, v]) => {
+      if (!hopByHop.includes(k.toLowerCase()) && typeof v === "string") {
+        res.setHeader(k, v);
+      }
+    });
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.status(upstream.status);
+    (upstream.data as NodeJS.ReadableStream).pipe(res);
+  } catch (err: any) {
+    console.error(`Error fetching external ${target}:`, err.message);
+    res.status(502).send("External origin unreachable.");
+  }
+});
+
+// オリジンおよび同等ホストへのリクエスト
 app.use("*", async (req: Request, res: Response) => {
   const path = req.originalUrl;
   const url = ORIGIN + path;
@@ -47,10 +75,25 @@ app.use("*", async (req: Request, res: Response) => {
         const $el = $(el);
         ["href", "src", "content"].forEach(attr => {
           const v = $el.attr(attr);
-          if (v && (v.startsWith("/") || v.startsWith("http"))) {
-            const newUrl = v.startsWith("http")
-              ? `/proxy/${encodeURIComponent(v)}`
-              : v;
+          if (!v) return;
+
+          let newUrl: string | null = null;
+
+          try {
+            const parsed = new URL(v, ORIGIN);
+            if (EQUIVALENT_HOSTS.includes(parsed.host)) {
+              // 同等ホストならパス＋クエリだけ
+              newUrl = parsed.pathname + parsed.search;
+            } else if (v.startsWith("/")) {
+              newUrl = v;
+            } else if (parsed.protocol.startsWith("http")) {
+              newUrl = `/${encodeURIComponent(v)}`;
+            }
+          } catch {
+            // skip malformed
+          }
+
+          if (newUrl) {
             $el.attr(attr, newUrl);
           }
         });
