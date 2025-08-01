@@ -1,9 +1,9 @@
 import express, { Request, Response } from "express";
 import axios from "axios";
 import morgan from "morgan";
-import * as cheerio from "cheerio"
+import * as cheerio from "cheerio";
 
-const ORIGIN = "https://petezahgames.com";  // ここだけ
+const ORIGIN = "https://gomuraw3.global.ssl.fastly.net";
 const PORT = process.env.PORT || 3000;
 const hopByHop = [
   "connection","keep-alive","proxy-authenticate","proxy-authorization",
@@ -12,31 +12,60 @@ const hopByHop = [
 
 const app = express();
 app.use(morgan("dev"));
+app.get("/", async (req: Request, res: Response) => {
+  const target = req.query.url;
+  if (typeof target !== "string") {
+    return res.status(400).send("Missing `url` query parameter");
+  }
 
+  let fetchUrl: string;
+  try {
+    fetchUrl = decodeURIComponent(target);
+    const upstream = await axios.get(fetchUrl, {
+      responseType: "stream",
+      headers: { host: new URL(fetchUrl).host },
+      timeout: 10000,
+      validateStatus: () => true
+    });
+    if (upstream.status < 200 || upstream.status >= 300) {
+      return res.status(upstream.status).send(`Upstream status ${upstream.status}`);
+    }
+    Object.entries(upstream.headers).forEach(([k, v]) => {
+      if (!hopByHop.includes(k.toLowerCase()) && typeof v === "string") {
+        res.setHeader(k, v);
+      }
+    })
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.status(upstream.status);
+    (upstream.data as NodeJS.ReadableStream).pipe(res);
+
+  } catch (err: any) {
+    console.error(`Error proxying ${target}:`, err.message);
+    res.status(502).send("Failed to fetch target URL");
+  }
+});
 app.use("*", async (req: Request, res: Response) => {
-  const path = req.originalUrl;
-  const url = ORIGIN + path;
+  const origPath = req.originalUrl;
+  let fetchUrl: string;
+  if (origPath.startsWith("/proxy/")) {
+    fetchUrl = decodeURIComponent(origPath.replace(/^\/proxy\//, ""));
+  } else {
+    fetchUrl = ORIGIN + origPath;
+  }
 
   try {
-    const upstream = await axios.get(url, {
+    const upstream = await axios.get(fetchUrl, {
       responseType: "stream",
-      headers: {
-        ...req.headers,
-        host: new URL(ORIGIN).host
-      },
+      headers: { ...req.headers, host: new URL(fetchUrl).host },
       timeout: 10000,
       validateStatus: () => true
     });
 
-    // ステータスチェック
     if (upstream.status < 200 || upstream.status >= 300) {
-      res.status(upstream.status).send(`Upstream status ${upstream.status}`);
-      return;
+      return res.status(upstream.status).send(`Upstream status ${upstream.status}`);
     }
 
     const contentType = upstream.headers["content-type"] || "";
-
-    // HTML の場合はバッファリングして書き換え
     if (contentType.includes("text/html")) {
       const chunks: Buffer[] = [];
       for await (const chunk of upstream.data) {
@@ -44,34 +73,26 @@ app.use("*", async (req: Request, res: Response) => {
       }
       const html = Buffer.concat(chunks).toString("utf8");
       const $ = cheerio.load(html);
-
-      // href, src, content属性をプロキシパスに書き換え
       $("link, script, img, a, meta").each((_, el) => {
         const $el = $(el);
-        ["href", "src", "content"].forEach(attr => {
+        for (const attr of ["href", "src", "content"] as const) {
           const v = $el.attr(attr);
           if (v && (v.startsWith("/") || v.startsWith("http"))) {
-            // 絶対URLはエンコードして“/proxy/実URL”に、ルート相対はそのまま
             const newUrl = v.startsWith("http")
               ? `/proxy/${encodeURIComponent(v)}`
               : v;
             $el.attr(attr, newUrl);
           }
-        });
+        }
       });
-
-      // ヘッダー転送
       Object.entries(upstream.headers).forEach(([k, v]) => {
         if (!hopByHop.includes(k.toLowerCase()) && typeof v === "string") {
           res.setHeader(k, v);
         }
       });
       res.setHeader("Access-Control-Allow-Origin", "*");
-      res.status(upstream.status).send($.html());
-      return;
+      return res.status(upstream.status).send($.html());
     }
-
-    // HTML以外はそのままストリームをパイプ
     Object.entries(upstream.headers).forEach(([k, v]) => {
       if (!hopByHop.includes(k.toLowerCase()) && typeof v === "string") {
         res.setHeader(k, v);
@@ -82,7 +103,7 @@ app.use("*", async (req: Request, res: Response) => {
     (upstream.data as NodeJS.ReadableStream).pipe(res);
 
   } catch (err: any) {
-    console.error(`Error fetching ${url}:`, err.message);
+    console.error(`Error fetching ${fetchUrl}:`, err.message);
     res.status(502).send("Origin unreachable.");
   }
 });
