@@ -1,0 +1,23 @@
+{
+  "name": "gomuraw-cdn-proxy",
+  "version": "1.0.0",
+  "description": "A CDN proxy for gomuraw.com with caching, deployable on render.com",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "nodemon src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "axios": "^1.11.0",
+    "express": "^4.19.2",
+    "morgan": "^1.10.1"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.10.4",
+    "nodemon": "^3.1.10",
+    "typescript": "^5.9.2",
+    "@types/morgan": "^1.9.10"
+  }
+}
