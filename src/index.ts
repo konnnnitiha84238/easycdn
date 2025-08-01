@@ -1,7 +1,7 @@
 import express, { Request, Response } from "express";
 import axios from "axios";
 import morgan from "morgan";
-import cheerio from "cheerio";
+import * as cheerio from "cheerio"
 
 const ORIGIN = "https://petezahgames.com";  // ここだけ
 const PORT = process.env.PORT || 3000;
