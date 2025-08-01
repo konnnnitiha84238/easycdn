@@ -3,7 +3,7 @@ import axios from "axios";
 import morgan from "morgan";
 import cheerio from "cheerio";
 
-const ORIGIN = "https://gomuraw3.global.ssl.fastly.net";  // ここだけ
+const ORIGIN = "https://petezahgames.com";  // ここだけ
 const PORT = process.env.PORT || 3000;
 const hopByHop = [
   "connection","keep-alive","proxy-authenticate","proxy-authorization",
