@@ -16,8 +16,6 @@ const hopByHop = [
 
 const app = express();
 app.use(morgan("dev"));
-
-// 外部URLエンコードパス用ルート
 app.get('/:encoded(https%3A.*|http%3A.*)', async (req: Request, res: Response) => {
   const target = decodeURIComponent(req.params.encoded);
   try {
@@ -39,8 +37,6 @@ app.get('/:encoded(https%3A.*|http%3A.*)', async (req: Request, res: Response) =
     res.status(502).send("External origin unreachable.");
   }
 });
-
-// オリジンおよび同等ホストへのリクエスト
 app.use("*", async (req: Request, res: Response) => {
   const path = req.originalUrl;
   const url = ORIGIN + path;
@@ -76,9 +72,9 @@ app.use("*", async (req: Request, res: Response) => {
   ["href", "src", "content"].forEach(attr => {
     let v = $el.attr(attr);
     if (!v) return;
-    if (v.startsWith("/proxy/")) {
+    if (v.startsWith("/")) {
       try {
-        v = decodeURIComponent(v.slice("/proxy/".length));
+        v = decodeURIComponent(v.slice("/".length));
       } catch {}
     }
 
