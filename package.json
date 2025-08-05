@@ -11,7 +11,7 @@
   "dependencies": {
     "axios": "^1.11.0",
     "express": "^4.19.2",
-    "http-proxy-middleware": "^3.0.5",
+    "morgan": "^1.10.1",
     "cheerio": "^1.1.2"
   },
   "devDependencies": {
@@ -20,6 +20,6 @@
     "@types/node": "^20.10.4",
     "nodemon": "^3.1.10",
     "typescript": "^5.9.2",
-    "@types/http-proxy-middleware": "^1.0.0"
+    "@types/morgan": "^1.9.10"
   }
 }
