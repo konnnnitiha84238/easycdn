@@ -13,7 +13,12 @@ const hopByHop = [
   "connection","keep-alive","proxy-authenticate","proxy-authorization",
   "te","trailer","transfer-encoding","upgrade"
 ];
-
+const REWRITE_RULES: Record<string, string[]> = {
+  a:      ["href"],
+  link:   ["href"],
+  script: ["src"],
+  img:    ["src"],
+};
 const app = express();
 app.use(morgan("dev"));
 app.get('/:encoded(https%3A.*|http%3A.*)', async (req: Request, res: Response) => {
@@ -66,35 +71,24 @@ app.use("*", async (req: Request, res: Response) => {
       }
       const html = Buffer.concat(chunks).toString("utf8");
       const $ = cheerio.load(html);
-
-    $("link, script, img, a, meta").each((_, el) => {
+$("link, script, img, a").each((_, el) => {
   const $el = $(el);
-  ["href", "src", "content"].forEach(attr => {
-    let v = $el.attr(attr);
-    if (!v) return;
-    if (v.startsWith("/")) {
-      try {
-        v = decodeURIComponent(v.slice("/".length));
-      } catch {}
-    }
+  const tag = el.tagName.toLowerCase();
+  for (const attr of REWRITE_RULES[tag] || []) {
+    const v = $el.attr(attr);
+    if (!v) continue;
 
     let newUrl: string | null = null;
-    try {
-      const parsed = new URL(v, ORIGIN);
-      if (EQUIVALENT_HOSTS.includes(parsed.host)) {
-        newUrl = parsed.pathname + parsed.search;
-      } else if (v.startsWith("/")) {
-        newUrl = v;
-      } else if (parsed.protocol.startsWith("http")) {
-        newUrl = `/${encodeURIComponent(v)}`;
-      }
-    } catch {
+    if (/^https?:\/\//i.test(v)) {
+      newUrl = `/${encodeURIComponent(v)}`;
     }
-
+    else if (v.startsWith("/")) {
+      newUrl = v;
+    }
     if (newUrl) {
       $el.attr(attr, newUrl);
     }
-  });
+  }
 });
 
 
